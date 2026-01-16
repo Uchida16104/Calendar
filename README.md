@@ -181,12 +181,6 @@ This project is provided as-is for educational and personal use.
 
 ---
 
-## Author
+## Developer
 
-**Hirotoshi Uchida**
-
----
-
-## Title
-
-**Calendar**
+***Hirotoshi Uchida***
