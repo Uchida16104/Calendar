@@ -1,54 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendar</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Calendar</title>
 
-  <!-- TailwindCSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://unpkg.com/alpinejs@latest/dist/cdn.min.js"></script>
+<script src="https://unpkg.com/htmx.org@latest"></script>
+<script src="https://unpkg.com/hyperscript.org@latest"></script>
 
-  <!-- Alpine.js -->
-  <script defer src="https://unpkg.com/alpinejs@latest/dist/cdn.min.js"></script>
+<link href="https://unpkg.com/aos@latest/dist/aos.css" rel="stylesheet" />
+<script src="https://unpkg.com/aos@latest/dist/aos.js"></script>
 
-  <!-- HTMX -->
-  <script src="https://unpkg.com/htmx.org@latest"></script>
+<script src="https://unpkg.com/pouchdb@latest/dist/pouchdb.min.js"></script>
 
-  <!-- hyperscript -->
-  <script src="https://unpkg.com/hyperscript.org@latest"></script>
-
-  <!-- AOS -->
-  <link href="https://unpkg.com/aos@latest/dist/aos.css" rel="stylesheet" />
-  <script src="https://unpkg.com/aos@latest/dist/aos.js"></script>
-
-  <!-- Swiper -->
-  <link rel="stylesheet" href="https://unpkg.com/swiper@latest/swiper-bundle.min.css" />
-  <script src="https://unpkg.com/swiper@latest/swiper-bundle.min.js"></script>
-
-  <!-- Shoelace -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@latest/dist/themes/light.css" />
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@latest/dist/shoelace.js"></script>
-
-  <!-- Iconify -->
-  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
-
-  <!-- Motion One -->
-  <script src="https://unpkg.com/motion@latest/dist/motion.umd.min.js"></script>
-
-  <!-- Lottie -->
-  <script src="https://unpkg.com/lottie-web@latest/build/player/lottie.min.js"></script>
-
-  <!-- PouchDB (Local IndexedDB wrapper) -->
-  <script src="https://unpkg.com/pouchdb@latest/dist/pouchdb.min.js"></script>
-
-  <style>
-    @media print {
-      .no-print { display: none; }
-      .day-cell { overflow: hidden; font-size: 10px; }
-    }
-  </style>
+<style>
+@media print {
+  .no-print { display:none; }
+  .day-cell { font-size:10px; }
+}
+</style>
 </head>
+
 <body class="bg-gray-50 text-gray-900" x-data="calendarApp()" x-init="init()">
+
+<!-- ===== Timezone Selection Overlay ===== -->
+<div x-show="!timezone"
+     class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+  <div class="bg-white p-6 rounded shadow w-96">
+    <h2 class="text-lg font-bold mb-2">Select Timezone</h2>
+    <p class="text-sm mb-3">This timezone will be used for all calendar dates.</p>
+
+    <select class="border p-2 w-full"
+            x-model="tempTimezone">
+      <template x-for="tz in timezones" :key="tz">
+        <option :value="tz" x-text="tz"></option>
+      </template>
+    </select>
+
+    <button class="mt-4 w-full bg-blue-500 text-white py-2"
+            @click="confirmTimezone">
+      Confirm
+    </button>
+  </div>
+</div>
 
 <header class="p-4 bg-white shadow flex justify-between items-center">
   <h1 class="text-2xl font-bold">Calendar</h1>
@@ -68,9 +64,9 @@
 
   <div class="grid grid-cols-7 border">
     <template x-for="day in calendarDays" :key="day.date">
-      <div class="day-cell border p-1 h-32 align-top" :class="{'bg-gray-100': !day.current}">
+      <div class="day-cell border p-1 h-32" :class="{'bg-gray-100':!day.current}">
         <div class="text-xs font-bold" x-text="day.label"></div>
-        <template x-for="item in day.items" :key="item.id">
+        <template x-for="item in day.items" :key="item._id">
           <div class="text-[10px] truncate" x-text="item.text"></div>
         </template>
       </div>
@@ -82,7 +78,7 @@
   <h2 class="font-bold mb-2">Add Task / Event / Memo</h2>
   <div class="flex gap-2">
     <input type="date" x-model="form.date" class="border p-1" />
-    <input type="text" x-model="form.text" placeholder="Text" class="border p-1 flex-1" />
+    <input type="text" x-model="form.text" class="border p-1 flex-1" />
     <select x-model="form.type" class="border p-1">
       <option value="task">Task</option>
       <option value="event">Event</option>
@@ -92,95 +88,104 @@
   </div>
 </section>
 
-<section class="p-4 no-print">
-  <h2 class="font-bold">Progress</h2>
-  <div class="w-full bg-gray-200 h-4">
-    <div class="bg-green-500 h-4" :style="`width:${progress}%`"></div>
-  </div>
-  <div class="text-sm" x-text="progress + '%'">0%</div>
-</section>
-
-<footer class="p-4 no-print flex gap-2">
-  <button class="bg-gray-300 px-3" @click="exportJSON">Export JSON</button>
-  <button class="bg-gray-300 px-3" @click="exportCSV">Export CSV</button>
+<footer class="p-4 no-print">
   <button class="bg-gray-300 px-3" onclick="window.print()">Print</button>
 </footer>
 
 <script>
 function calendarApp() {
   return {
-    db: null,
-    today: new Date(),
-    current: new Date(),
-    items: [],
-    form: { date: '', text: '', type: 'task' },
-    weekDays: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
-    init() {
+    db:null,
+    items:[],
+    current:new Date(),
+
+    timezone:null,
+    tempTimezone:null,
+    timezones:Intl.supportedValuesOf('timeZone'),
+
+    weekDays:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    form:{date:'',text:'',type:'task'},
+
+    init(){
       AOS.init();
-      this.db = new PouchDB('calendar');
+      this.db=new PouchDB('calendar');
+
+      this.timezone=localStorage.getItem('timezone');
+      this.tempTimezone=this.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       this.load();
     },
-    async load() {
-      const res = await this.db.allDocs({ include_docs: true });
-      this.items = res.rows.map(r => r.doc);
+
+    confirmTimezone(){
+      this.timezone=this.tempTimezone;
+      localStorage.setItem('timezone',this.timezone);
     },
-    get monthLabel() {
-      return this.current.toLocaleDateString('en-US',{year:'numeric',month:'long'});
+
+    async load(){
+      const res=await this.db.allDocs({include_docs:true});
+      this.items=res.rows.map(r=>r.doc);
     },
-    get calendarDays() {
-      const days = [];
-      const y = this.current.getFullYear();
-      const m = this.current.getMonth();
-      const first = new Date(y,m,1);
-      const start = new Date(first);
-      start.setDate(start.getDate() - first.getDay());
+
+    formatDate(d){
+      return new Intl.DateTimeFormat('en-CA',{
+        timeZone:this.timezone,
+        year:'numeric',month:'2-digit',day:'2-digit'
+      }).format(d);
+    },
+
+    get monthLabel(){
+      return new Intl.DateTimeFormat('en-US',{
+        timeZone:this.timezone,
+        year:'numeric',month:'long'
+      }).format(this.current);
+    },
+
+    get calendarDays(){
+      if(!this.timezone) return [];
+      const days=[];
+      const y=this.current.getFullYear();
+      const m=this.current.getMonth();
+      const first=new Date(y,m,1);
+      const start=new Date(first);
+      start.setDate(start.getDate()-first.getDay());
+
       for(let i=0;i<42;i++){
-        const d = new Date(start);
+        const d=new Date(start);
         d.setDate(start.getDate()+i);
-        const key = d.toISOString().slice(0,10);
+        const key=this.formatDate(d);
+
         days.push({
-          date: key,
-          label: d.getDate(),
-          current: d.getMonth()===m,
-          items: this.items.filter(it=>it.date===key)
+          date:key,
+          label:d.getDate(),
+          current:d.getMonth()===m,
+          items:this.items.filter(it=>it.date===key)
         });
       }
       return days;
     },
-    async addItem() {
-      if(!this.form.date || !this.form.text) return;
-      const doc = { _id: new Date().toISOString(), ...this.form, done:false };
+
+    async addItem(){
+      if(!this.form.date||!this.form.text) return;
+      const doc={
+        _id:crypto.randomUUID(),
+        date:this.form.date,
+        text:this.form.text,
+        type:this.form.type
+      };
       await this.db.put(doc);
       this.items.push(doc);
       this.form.text='';
     },
-    get progress() {
-      const tasks = this.items.filter(i=>i.type==='task');
-      if(tasks.length===0) return 0;
-      const done = tasks.filter(t=>t.done).length;
-      return Math.round(done/tasks.length*100);
+
+    prevMonth(){
+      this.current=new Date(this.current.getFullYear(),this.current.getMonth()-1,1);
     },
-    prevMonth(){ this.current.setMonth(this.current.getMonth()-1); this.current=new Date(this.current); },
-    nextMonth(){ this.current.setMonth(this.current.getMonth()+1); this.current=new Date(this.current); },
-    exportJSON(){
-      const blob=new Blob([JSON.stringify(this.items,null,2)],{type:'application/json'});
-      this.download(blob,'calendar.json');
-    },
-    exportCSV(){
-      const header='date,type,text\n';
-      const body=this.items.map(i=>`${i.date},${i.type},${i.text}`).join('\n');
-      const blob=new Blob([header+body],{type:'text/csv'});
-      this.download(blob,'calendar.csv');
-    },
-    download(blob,name){
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download=name;
-      a.click();
-      URL.revokeObjectURL(a.href);
+    nextMonth(){
+      this.current=new Date(this.current.getFullYear(),this.current.getMonth()+1,1);
     }
   }
 }
 </script>
+
 </body>
 </html>
